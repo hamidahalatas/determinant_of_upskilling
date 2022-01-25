@@ -1,0 +1,113 @@
+---
+title: "Quant Theory Prelim Findings"
+author: "Hamidah Alatas"
+date: "4/18/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library("tidyverse")
+library("haven")
+library("plyr")
+```
+
+
+```{r}
+sak20 <- read_dta("01_data/sak20aug_coding.dta") 
+```
+
+```{r}
+sak20_dta <- sak20[, c("r27a","r27b","r27c","age","gender",
+                       "heduc2", "urban", 
+                       "dlabforce", "everworked","r6d", "weight")]
+sak20_dta <- na.omit(sak20_dta) ## get rid of all missings
+
+sak20_dta$pre_employ <- ifelse(sak20_dta$r27b==1, 1, 0)
+sak20_dta$pre_employ <- ordered(sak20_dta$pre_employ, 
+                                levels=c(0,1),
+                                labels=c("Not Participate", "Participate"))
+sak20_dta$educ <- ordered(sak20_dta$heduc2, 
+                                levels=c(1:6),
+                                labels=c("No Schooling",
+                                         "Elementary School",
+                                         "Middle School",
+                                         "High School",
+                                         "Diploma",
+                                         "University or higher"))
+
+
+ggplot(sak20_dta, 
+       aes(factor(pre_employ), as.numeric(age), fill=pre_employ)) +
+  geom_boxplot(aes(), show.legend = FALSE) +  
+  xlab("Pre-Employment Card Program Participation") + 
+   ylab("Age") +
+  theme_tufte() +
+  scale_fill_manual(values = c("lightblue1", "slategray4")) +
+  theme(axis.text = element_text(size = 14),
+        text = element_text(size = 14))
+
+sak20_dta %>% dplyr::group_by(pre_employ) %>% dplyr::summarise(mean = mean(age))
+```
+
+```{r}
+sak20_dta %>% 
+  mutate(value = 1) %>%
+  dplyr::group_by(pre_employ, educ) %>% 
+  dplyr::summarise(value = sum(value)) %>%
+  ungroup() %>%
+  dplyr::group_by(pre_employ) %>%
+  dplyr::transmute(educ, percentage = round(value/sum(value)*100),2) %>%
+  ggplot(aes(fill=pre_employ, y=percentage, x=educ)) + 
+    geom_bar(position="dodge", stat="identity") +
+  ylab("Percentage") +
+  xlab("Education Level") +
+  geom_text(aes(x=educ, y=percentage+2,
+                label=paste0(round(percentage, 0), sep = "%")), 
+            position = position_dodge(width = 1), hjust=0.5, size = 3) +
+  theme_tufte() +
+  scale_fill_manual(values = c("#d8b365", "#5ab4ac")) +
+  theme(legend.title = element_blank())
+
+
+```
+
+```{r}
+sak20_dta$activity <- ifelse(sak20_dta$dlabforce==1,1,
+                              ifelse(sak20_dta$dlabforce>=2 & sak20_dta$dlabforce<=5,2,ifelse(sak20_dta$dlabforce==6,3,ifelse(sak20_dta$dlabforce==7,4,5))))
+
+sak20_dta$activity <- ordered(sak20_dta$activity,
+                              levels = c(1:5),
+                              labels = c("Working",
+                                         "Unemployed",
+                                         "Student",
+                                         "Housekeeping",
+                                         "Others"))
+sak20_dta$evertrain <- ifelse(sak20_dta$r6d==1,1,0)
+                                     
+a <- glm(pre_employ ~ age + educ + gender + urban + activity + everworked + evertrain, family = binomial, data = sak20_dta)
+
+stargazer(a, type = "html",
+          title = "Logistic Regression Models Predicting Participation in Training",
+  column.labels = c("Without Weight", "With Weight"),
+  colnames = FALSE,
+  table.placement = "H",
+  header=FALSE,
+  model.numbers = FALSE,
+  dep.var.caption = " ",
+  dep.var.labels = "Participating in Pre-Employment Card Program",
+  keep.stat = c("rsq", "f"),
+  # covariate.labels = c("(Intercept)", "Training: More than a year ago$^a$",
+  #                      "Training: Less than a year ago for < 1 week$^a$", 
+  #                      "Training: Less than a year ago for > 1 week$^a$", 
+  #                      "Hour", "Log Income", 
+  #                      "Contract = Fixed-Term", "Contract = Permanent", 
+  #                      "Medical Benefit = Yes",
+  #                      "Physical Level", "Stress Level", 
+  #                      "Gender: Female", "Age"),
+  # notes = "Standard error is clustered by individual ID \n a: Base is worker without training",
+  notes.align = "l",
+  out = "/Users/hamidah/Documents/School/DA4SS/Data_Analysis_Social_Science/models.htm")
+
+```
+
